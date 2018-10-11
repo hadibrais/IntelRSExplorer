@@ -113,14 +113,26 @@ align 4
     mov rsi, qword [rsi]
 %endrep
 
+%rep 4 - (RS% 4)
+nop
+%endrep
+
 %elifdef LOADSPECREPLAY
 %rep RS
     mov rdi, qword [rdi+8]
 %endrep
 
+%rep 4 - (RS% 4)
+nop
+%endrep
+
 %elifdef LOADNONSPEC
 %rep RS
     mov rsi, qword [rsi+2048]
+%endrep
+
+%rep 4 - (RS% 4)
+nop
 %endrep
 
 %elifdef JUMPFORE

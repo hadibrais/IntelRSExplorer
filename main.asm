@@ -84,6 +84,7 @@ align 4
     ; The RS must be empty now.
     
     ; Start a new repetition with an empty RS.
+;--------------------------------------------------ADD--------------------------------------------------
 %ifdef ADD
 ; We can also use two adds and two NOPs, but it seems that a group of 4 uops some which are NOPs
 ; make the allocator wait longer, which is weird. So it's important to put the padding NOPs are the very end.
@@ -107,34 +108,40 @@ align 4
 %endrep
 %endif
 %endif
-
+;--------------------------------------------------LOADSPEC--------------------------------------------------
 %elifdef LOADSPEC
 %rep RS
     mov rsi, qword [rsi]
 %endrep
 
+%if (RS% 4) > 0
 %rep 4 - (RS% 4)
 nop
 %endrep
-
+%endif
+;--------------------------------------------------LOADSPECREPLAY--------------------------------------------------
 %elifdef LOADSPECREPLAY
 %rep RS
     mov rdi, qword [rdi+8]
 %endrep
 
+%if (RS% 4) > 0
 %rep 4 - (RS% 4)
 nop
 %endrep
-
+%endif
+;--------------------------------------------------LOADNONSPEC--------------------------------------------------
 %elifdef LOADNONSPEC
 %rep RS
     mov rsi, qword [rsi+2048]
 %endrep
 
+%if (RS% 4) > 0
 %rep 4 - (RS% 4)
 nop
 %endrep
-
+%endif
+;--------------------------------------------------JUMPFORE--------------------------------------------------
 %elifdef JUMPFORE
 %macro  jmpmacro 0 
     jmp     %%label  
@@ -145,6 +152,12 @@ nop
     jmpmacro
 %endrep
 
+%if (((1+(RS-2))*2)% 4) > 0
+%rep 4 - (((1+(RS-2))*2)% 4)
+nop
+%endrep
+%endif
+;--------------------------------------------------JUMPBACK--------------------------------------------------
 %elifdef JUMPBACK
 %assign tnumlast 2*(1+(RS-2))
 %xdefine tlast .target %+ tnumlast
@@ -163,6 +176,12 @@ t2:
 %endrep
 .target0:
 
+%if (((1+(RS-2))*2)% 4) > 0
+%rep 4 - (((1+(RS-2))*2)% 4)
+nop
+%endrep
+%endif
+;--------------------------------------------------JUMPFORECOND--------------------------------------------------
 %elifdef JUMPFORECOND
 
 %macro  jmpmacro 0 
@@ -185,45 +204,72 @@ t2:
     jmpmacro
 %endrep
 
+%if (((1+(RS-2))*2)% 4) > 0
+%rep 4 - (((1+(RS-2))*2)% 4)
+nop
+%endrep
+%endif
+;--------------------------------------------------STORE1--------------------------------------------------
 ; Hits the store buffer occupancy limit (RESOURCE_STALLS.SB) but not that of the RS.
+; 3 STA uops and 1 STD uop can be dispatched per cycle.
 %elifdef STORE1
-%rep 1+(RS-4)/(4-2)
+%rep RS
     mov qword [rsi], rax
     mov qword [rsi], rax
     nop
     nop
 %endrep
-
+;--------------------------------------------------STORE2--------------------------------------------------
 ; Hits the RS occupancy limit before that of the SB.
+; 3 STA uops and 1 STD uop can be dispatched per cycle.
+; Odd RS occupancy is not supported and is rounded to even.
 %elifdef STORE2
-%rep 1+(RS-4)/(4-2)
-    mov qword [rsi], rax
-    mov qword [rsi], rax
-%endrep
-%rep 4 - (((1+(RS-4)/(4-2))% 4)*2)
-    nop
-%endrep
+%if (RS% 2) > 0
+%assign RS (RS-1)
+%endif
 
+%if RS = 4
+    mov qword [rsi], rax
+    mov qword [rsi], rax
+    nop
+    nop
+%elif
+%rep (RS - 4)
+    mov qword [rsi], rax
+%endrep
+%if (RS% 4) > 0
+    mov qword [rsi], rax
+    nop
+    nop
+    nop
+%endif
+%endif
+
+;--------------------------------------------------BSWAP--------------------------------------------------
 %elifdef BSWAP
 
 %if RS < 12
-%rep RS
+%rep RS/2
     bswap rax
 %endrep
-%rep 4 - (RS% 4)
+%if ((RS/2)% 4) > 0
+%rep 4 - ((RS/2)% 4)
     nop
-%endrep    
+%endrep  
+%endif  
 %elif
 %rep (RS/2) + ((RS-12)/14)
     bswap rax
 %endrep
+%if (((RS/2) + ((RS-12)/14))% 4) > 0
 %rep 4 - (((RS/2) + ((RS-12)/14))% 4)
     nop
-%endrep 
+%endrep
+%endif 
 %endif
 
 %endif
-
+;---------------------------------------------------------------------------------------------------------
     ; Now the RS has exactly the specified number of entries.
     ; See if we can allocate different uops without penalty.
 
